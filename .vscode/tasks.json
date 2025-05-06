@@ -1,0 +1,31 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cppbuild",
+            "label": "C/C++: g++ build fft_test project", 
+            "command": "/usr/bin/g++",
+            "args": [
+           
+                "-fdiagnostics-color=always",
+                "-g",
+                "${fileDirname}/Source.cpp",
+                "${fileDirname}/fft.cpp",
+            
+                "-o",
+                "${fileDirname}/Source" 
+            ],
+            "options": {
+                "cwd": "${fileDirname}" 
+            },
+            "problemMatcher": [
+                "$gcc" 
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true 
+            },
+            "detail": "fft" 
+        }
+    ]
+}
