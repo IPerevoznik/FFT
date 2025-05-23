@@ -3,233 +3,200 @@
 #include <vector>
 #include <complex>
 #include <stdexcept>
+#include <string>
+#include <algorithm> 
+#include <iostream> 
+#include <iomanip>  
 
-using Complex = std::complex<double>;
-using Real = double;
-
-namespace {
-    const Real PI = std::acos(-1.0);                
-    const Complex J(0.0, 1.0);                      
-
-    // для radix-3 
-    const Real R3_SIN_2PI_3 = std::sin(2.0 * PI / 3.0); 
-    const Real R3_C1 = -R3_SIN_2PI_3;                   
-
-    // для radix-5 
-    const Real R5_COS_4PI_5 = std::cos(4.0 * PI / 5.0); 
-    const Real R5_SIN_4PI_5 = std::sin(4.0 * PI / 5.0); 
-    const Real R5_SIN_2PI_5 = std::sin(2.0 * PI / 5.0); 
-    const Real R5_K0 = R5_COS_4PI_5;
-    const Real R5_K10 = -R5_SIN_4PI_5;
-    const Real R5_T_CONST = R5_SIN_2PI_5;
-    const Real R5_K11 = R5_T_CONST - R5_K10;
-    const Real R5_K12 = -R5_T_CONST - R5_K10;
-
-    inline bool is_power_of_two(size_t n) {
-        return (n > 0) && ((n & (n - 1)) == 0);
-    }
-
-
-    size_t log2_power_of_two(size_t n) {
-        if (n == 0) { 
-             throw std::runtime_error("log2_power_of_two: n не может быть 0");
-        }
-        if (!is_power_of_two(n)) { 
-             throw std::runtime_error("log2_power_of_two: n должно быть степенью двойки.");
-        }
-        if (n == 1) return 0;
-        size_t count = 0;
-        while (n > 1) {
-            n >>= 1;  
-            count++;
-        }
-        return count;
-    }
-
-    size_t reverse_num_bits(size_t n, size_t num_bits) {
-        if (num_bits == 0) return 0; 
-        size_t reversed_n = 0;
-        for (size_t bit = 0; bit < num_bits; ++bit) {
-            if ((n >> bit) & 1) { 
-                reversed_n |= (1 << (num_bits - 1 - bit)); 
-            }
-        }
-        return reversed_n;
-    }
-
-    void iota_manual(std::vector<size_t>& vec, size_t start_val) {
-        for (size_t i = 0; i < vec.size(); ++i) 
-            vec[i] = start_val + i;
-    }
-
-} 
-
-void FFT::base_transform_radix2(Complex* y){
-    Complex t = y[1];
-    y[1] = y[0] - t;
-    y[0] += t;
+namespace { 
+    const double PI = std::acos(-1.0); 
 }
 
-void FFT::base_transform_radix3(Complex* y) {
-    Complex a = y[1] + y[2];
-    Complex t1 = y[0] - a / 2.0;
-    Complex t2 = (y[1] - y[2]) * R3_C1; 
-    Complex b = ::J * t2;
-    y[0] += a;
-    y[1] = t1 + b;
-    y[2] = t1 - b;
+void FFT::base_transform_radix2(Complex* y, bool inverse) { 
+    Complex x0 = y[0]; 
+    Complex x1 = y[1]; 
+    y[0] = x0 + x1; 
+    y[1] = x0 - x1;
 }
 
-void FFT::base_transform_radix5(Complex* y) {
-    Complex a1 = y[1] + y[4];
-    Complex a2 = y[2] + y[3];
-    Complex a3 = y[2] - y[3]; 
-    Complex a4 = y[1] - y[4]; 
-    
-    Complex c5 = R5_K0 * (a1 - a2);
-    Complex c6 = R5_K10 * (a3 + a4); 
-    Complex d1 = y[0] - a1 / 2.0 - c5;
-    Complex d2 = y[0] - a2 / 2.0 + c5;
-    
-    Complex t1 = ::J * (R5_K11 * a3 + c6); 
-    Complex t2 = ::J * (R5_K12 * a4 + c6); 
-    y[0] += a1 + a2;
-    y[1] = d1 + t2;
-    y[2] = d2 + t1;
-    y[3] = d2 - t1; 
-    y[4] = d1 - t2; 
+void FFT::base_transform_radix3(Complex* y, bool inverse) { 
+    Real angle_sign = inverse ? 1.0 : -1.0;
+    Complex W3_1 = std::polar(1.0, angle_sign * 2.0 * PI / 3.0);
+    Complex W3_2 = std::polar(1.0, angle_sign * 4.0 * PI / 3.0);
+    Complex x0 = y[0]; 
+    Complex x1 = y[1];
+    Complex x2 = y[2];
+    Complex Y0 = x0 + x1 + x2; 
+    Complex Y1 = x0 + x1*W3_1 + x2*W3_2; 
+    Complex Y2 = x0 + x1*W3_2 + x2*W3_1;
+    y[0] = Y0; 
+    y[1] = Y1;
+    y[2] = Y2;
 }
 
-FFT::FFT(size_t length) : N_(length) {
-    if (N_ == 0) {
-        radix_ = 0;
-        num_stages_ = 0;
-        base_transform_func_ = nullptr;
-        return;
-    }
-    if (N_ == 1) {
-        radix_ = 1; 
-        num_stages_ = 0; 
-        base_transform_func_ = nullptr;
-        precompute_permutation_indices(); 
-        return;
-    }
+void FFT::base_transform_radix5(Complex* y, bool inverse) { 
+    Real angle_sign = inverse ? 1.0 : -1.0;
+    Complex W5_1 = std::polar(1.0, angle_sign * 2.0 * PI / 5.0);
+    Complex W5_2 = std::polar(1.0, angle_sign * 4.0 * PI / 5.0);
+    Complex W5_3 = std::polar(1.0, angle_sign * 6.0 * PI / 5.0);
+    Complex W5_4 = std::polar(1.0, angle_sign * 8.0 * PI / 5.0);
+    Complex x0 = y[0], x1 = y[1], x2 = y[2], x3 = y[3], x4 = y[4];
+    Complex Y0 = x0 + x1 + x2 + x3 + x4;
+    Complex Y1 = x0 + x1*W5_1 + x2*W5_2 + x3*W5_3 + x4*W5_4;
+    Complex Y2 = x0 + x1*W5_2 + x2*W5_4 + x3*W5_1 + x4*W5_3;
+    Complex Y3 = x0 + x1*W5_3 + x2*W5_1 + x3*W5_4 + x4*W5_2;
+    Complex Y4 = x0 + x1*W5_4 + x2*W5_3 + x3*W5_2 + x4*W5_1;
+    y[0] = Y0; 
+    y[1] = Y1; 
+    y[2] = Y2; 
+    y[3] = Y3; 
+    y[4] = Y4;
+}
 
-    size_t M; 
-    if (N_ % 5 == 0 && is_power_of_two(N_ / 5)) {
-        radix_ = 5;
-        M = N_ / 5;
-        base_transform_func_ = FFT::base_transform_radix5;
-    } else if (N_ % 3 == 0 && is_power_of_two(N_ / 3)) {
-        radix_ = 3;
-        M = N_ / 3;
-        base_transform_func_ = FFT::base_transform_radix3;
-    } else if (is_power_of_two(N_)) { 
-        radix_ = 2;
-        M = N_ / 2; 
-        base_transform_func_ = FFT::base_transform_radix2;
-    }
-  
-    num_stages_ = log2_power_of_two(M);
 
+FFT::FFT(size_t length) : N_(length) { 
+    if (N_ == 0) 
+    { 
+        return; 
+    }
+    prime_factors_sequence_.clear();
+    size_t temp_N = N_;
+    while (temp_N > 1 && temp_N % 2 == 0){ 
+        prime_factors_sequence_.push_back(2); 
+        temp_N /= 2; 
+    }
+    while (temp_N > 1 && temp_N % 3 == 0) { 
+        prime_factors_sequence_.push_back(3);
+         temp_N /= 3;
+    }
+    while (temp_N > 1 && temp_N % 5 == 0) { 
+        prime_factors_sequence_.push_back(5);
+        temp_N /= 5; 
+    }
+    if (temp_N > 1) { 
+        throw std::invalid_argument("FFT: содержит множители, отличные от 2, 3, 5") ; 
+    }
+    if (N_ > 1 && prime_factors_sequence_.empty()) {
+         throw std::invalid_argument("FFT: Не удалось разложить N "); 
+    }
     precompute_twiddle_factors();
     precompute_permutation_indices();
 }
-void FFT::precompute_twiddle_factors() {
-    if (N_ < 2) return; 
 
-    twiddle_factors_.resize(N_ / 2);
-    for (size_t k = 0; k < N_ / 2; ++k) {
+void FFT::precompute_twiddle_factors() { 
+    if (N_ < 2) { 
+        twiddle_factors_.clear(); 
+        return; 
+    }
+
+    twiddle_factors_.resize(N_);
+    for (size_t k = 0; k < N_; ++k) {
         Real angle = -2.0 * PI * static_cast<Real>(k) / static_cast<Real>(N_);
-        twiddle_factors_[k] = std::polar(1.0, angle); 
+        twiddle_factors_[k] = std::polar(1.0, angle);
     }
 }
 
-void FFT::precompute_permutation_indices() {
+void FFT::precompute_permutation_indices() { 
 
     permutation_indices_.resize(N_);
 
-    if (N_ == 0) return; 
-    if (N_ == 1) {
+    if (N_ == 0) return;
+    if (N_ == 1) { 
         permutation_indices_[0] = 0;
-        return;
+         return; 
     }
-    size_t M_val = N_ / radix_; 
-    size_t S_val = num_stages_; 
 
     for (size_t k = 0; k < N_; ++k) {
-        size_t n1 = k / M_val;
-        size_t n0 = k % M_val;
-        permutation_indices_[k] = reverse_num_bits(n0, S_val) * radix_ + n1;
+        size_t original_val = k;
+        size_t permuted_val = 0;
+        for (auto it = prime_factors_sequence_.rbegin(); it != prime_factors_sequence_.rend(); ++it) {
+            size_t factor = *it;
+            permuted_val = permuted_val * factor + (original_val % factor);
+            original_val /= factor;
+        }
+        permutation_indices_[k] = permuted_val;
     }
 }
 
-std::vector<Complex> FFT::fft(const std::vector<Complex>& input) {
-    if (input.size() != N_) { throw std::invalid_argument("fft: Размер входных данных не совпадает с N"); }
+
+std::vector<Complex> FFT::fft(const std::vector<Complex>& input) { 
+    if (input.size() != N_) { throw std::invalid_argument("fft: Размер не совпадает."); }
     if (N_ == 0) return {};
-    if (N_ == 1) return input; 
-    std::vector<Complex> data = input;
+    std::vector<Complex> data = input; 
     core_fft(data, false); 
     return data;
 }
 
-std::vector<Complex> FFT::ifft(const std::vector<Complex>& input) {
-    if (input.size() != N_) { throw std::invalid_argument("ifft: Размер входных данных не совпадает с N"); }
+std::vector<Complex> FFT::ifft(const std::vector<Complex>& input) { 
+    if (input.size() != N_) { throw std::invalid_argument("ifft: Размер не совпадает."); }
     if (N_ == 0) return {};
-    if (N_ == 1) return input;
-    std::vector<Complex> conj_input(N_);
-    for (size_t i = 0; i < N_; ++i) {
-        conj_input[i] = std::conj(input[i]);
-    }
-    core_fft(conj_input, true); 
-    Real scale = 1.0 / static_cast<Real>(N_);
-    std::vector<Complex> result(N_);
-    for (size_t i = 0; i < N_; ++i) {
-        result[i] = std::conj(conj_input[i]) * scale;
-    }
-    return result;
+    std::vector<Complex> data = input; 
+    core_fft(data, true); 
+    if (N_ > 0) { 
+        Real scale = 1.0 / static_cast<Real>(N_); 
+        for (size_t i = 0; i < N_; ++i) 
+        { 
+            data[i] *= scale;
+        } 
+        }
+    return data;
 }
 
 
-void FFT::core_fft(std::vector<Complex>& data, bool) {
+void FFT::core_fft(std::vector<Complex>& data, bool inverse) { 
+    if (N_ <= 1) return;
 
-    if (N_ > 1) { 
-        std::vector<Complex> temp_data = data;
-        for (size_t i = 0; i < N_; ++i) {
-            if (permutation_indices_[i] >= N_) { 
-                throw std::out_of_range("core_fft: Индекс перестановки вне диапазона.");
-            }
-            data[permutation_indices_[i]] = temp_data[i];
-        }
+    std::vector<Complex> temp_perm_data = data;
+    for (size_t i = 0; i < N_; ++i) { 
+        data[permutation_indices_[i]] = temp_perm_data[i]; 
     }
-
-
-
-    if (radix_ > 1 && base_transform_func_ != nullptr) {
-        size_t M_val = N_ / radix_; 
-        for (size_t m_idx = 0; m_idx < M_val; ++m_idx) {
-            base_transform_func_(&data[m_idx * radix_]);
-        }
-    }
-
     
-    size_t M_len = N_ / radix_; 
-    size_t current_processing_block_size_nr = radix_; 
-    size_t num_butterfly_sets_nl = M_len / 2; 
-    for (size_t s = 0; s < num_stages_; ++s) { 
-        for (size_t l_set_idx = 0; l_set_idx < num_butterfly_sets_nl; ++l_set_idx) {
-            for (size_t r_butterfly_leg_idx = 0; r_butterfly_leg_idx < current_processing_block_size_nr; ++r_butterfly_leg_idx) {
-                size_t p_offset = 2 * l_set_idx * current_processing_block_size_nr;
-                size_t idx_p = p_offset + r_butterfly_leg_idx;
-                size_t idx_q = idx_p + current_processing_block_size_nr;
-                size_t twiddle_lut_idx = r_butterfly_leg_idx * num_butterfly_sets_nl;
-                Complex Wk = twiddle_factors_[twiddle_lut_idx];
-                Complex t = data[idx_q] * Wk;
-                data[idx_q] = data[idx_p] - t;
-                data[idx_p] += t;
+    size_t current_processed_block_size = 1; 
+
+
+    for (size_t stage_radix : prime_factors_sequence_) {
+        void(*selected_base_transform_func)(Complex*, bool); 
+        if (stage_radix == 2) selected_base_transform_func = FFT::base_transform_radix2;
+        else if (stage_radix == 3) selected_base_transform_func = FFT::base_transform_radix3;
+        else if (stage_radix == 5) selected_base_transform_func = FFT::base_transform_radix5;
+        else { ; 
+        }
+        
+        size_t num_dft_groups = N_ / (stage_radix * current_processed_block_size); 
+        
+        for (size_t group_idx = 0; group_idx < num_dft_groups; ++group_idx) {
+            for (size_t element_in_prev_block_idx = 0; element_in_prev_block_idx < current_processed_block_size; ++element_in_prev_block_idx) {
+                std::vector<Complex> y_buffer(stage_radix); 
+                
+                for (size_t leg_idx = 0; leg_idx < stage_radix; ++leg_idx) {
+                    size_t data_idx = group_idx * stage_radix * current_processed_block_size + 
+                                      leg_idx * current_processed_block_size +                 
+                                      element_in_prev_block_idx;                             
+                    y_buffer[leg_idx] = data[data_idx];
+                    
+                    if (leg_idx > 0) { 
+                        
+                        size_t twiddle_idx = (leg_idx * element_in_prev_block_idx * num_dft_groups) % N_;
+                        Complex W = twiddle_factors_[twiddle_idx]; 
+                        if (inverse) {
+                             W = std::conj(W); 
+                            }
+                        y_buffer[leg_idx] *= W;
+                    }
+                }
+                
+                selected_base_transform_func(y_buffer.data(), inverse); 
+                
+                for (size_t leg_idx = 0; leg_idx < stage_radix; ++leg_idx) {
+                    size_t data_idx = group_idx * stage_radix * current_processed_block_size +
+                                      leg_idx * current_processed_block_size +
+                                      element_in_prev_block_idx;
+                    data[data_idx] = y_buffer[leg_idx];
+                }
             }
         }
-        current_processing_block_size_nr *= 2;
-        num_butterfly_sets_nl /= 2;
+        current_processed_block_size *= stage_radix;
     }
 }
+
+

@@ -10,6 +10,8 @@
 #include <string> 
 #include <fstream>
 
+//#define LOG_ON
+
 
 
 using Complex = std::complex<double>;
@@ -67,75 +69,85 @@ Real calculate_rmse(const std::vector<Complex>& v1, const std::vector<Complex>& 
 
 
 int main() {
-
-    /*std::ofstream logfile("fft_test_output.txt");
+    #ifdef LOG_ON
+    std::ofstream logfile("fft_test_output.txt");
     if (!logfile.is_open()) {
         std::cerr << "Не удалось открыть файл для записи" << std::endl;
         return 1;
-    }*/
+    }
+   #endif
 
 
     std::cout << "Тест FFT класса" << std::endl;
     std::cout << "---------------------------------" << std::endl;
 
     std::vector<size_t> test_lengths = {
-        2,3,5,
-          8,       // 2 * 2^2
-         16,       // 2 * 2^3
-         64,       // 2 * 2^5
-         12,       // 3 * 2^2
-         24,       // 3 * 2^3
-         96,       // 3 * 2^5
-         10,       // 5 * 2^1
-         20,       // 5 * 2^2
-         80,       // 5 * 2^4
+        
+         15, 25, 10, 2, 3, 5, 16, 125, 100, 90, 7, 54
 
  
     };
 
     std::cout << std::fixed << std::setprecision(std::numeric_limits<Real>::max_digits10);
 
-    
-//logfile << std::fixed << std::setprecision(std::numeric_limits<Real>::max_digits10);
+#ifdef LOG_ON
+logfile << std::fixed << std::setprecision(std::numeric_limits<Real>::max_digits10);
+#endif
 
 for (size_t length : test_lengths) {
     std::cout << "\nТест для N = " << length << ":" << std::endl;
-   // logfile << "\nТест для N = " << length << ":" << std::endl;
+    #ifdef LOG_ON
+    logfile << "\nТест для N = " << length << ":" << std::endl;
+   #endif
 
     try {
         FFT processor(length);
         std::vector<Complex> original_data = generate_random_complex_vector(length);
 
-        if (length <= 16) {
+        if (length <= 15) {
             std::cout << "  Входные данные:" << std::endl;
-          //  logfile << "  Входные данные:" << std::endl;
+            #ifdef LOG_ON
+            logfile << "  Входные данные:" << std::endl;
+          #endif
             for(const auto& val : original_data) {
                 std::cout << "    " << val << std::endl;
-               // logfile << "    " << val << std::endl;
+                #ifdef LOG_ON
+                logfile << "    " << val << std::endl;
+               #endif
             }
         }
 
         std::vector<Complex> transformed_data = processor.fft(original_data);
 
-        if (length <= 16) {
+        if (length <= 15) {
             std::cout << "  Результат FFT:" << std::endl;
-          //  logfile << "  Результат FFT:" << std::endl;
+            #ifdef LOG_ON
+            logfile << "  Результат FFT:" << std::endl;
+          #endif
             for(const auto& val : transformed_data) {
                 std::cout << "    " << val << std::endl;
-               // logfile << "    " << val << std::endl;
+                #ifdef LOG_ON
+                logfile << "    " << val << std::endl;
+               #endif
             }
         }
 
         std::vector<Complex> reconstructed_data = processor.ifft(transformed_data);
         std::cout << " IFFT :" << std::endl;
-       // logfile << " IFFT :" << std::endl;
+        #ifdef LOG_ON
+        logfile << " IFFT :" << std::endl;
+       #endif
 
-        if (length <= 16) {
+        if (length <= 15) {
             std::cout << "  Восстановленные данные:" << std::endl;
-          //  logfile << "  Восстановленные данные:" << std::endl;
+            #ifdef LOG_ON
+            logfile << "  Восстановленные данные:" << std::endl;
+          #endif
             for(const auto& val : reconstructed_data) {
                 std::cout << "    " << val << std::endl;
-               // logfile << "    " << val << std::endl;
+                #ifdef LOG_ON
+                logfile << "    " << val << std::endl;
+                #endif
             }
         }
 
@@ -143,19 +155,29 @@ for (size_t length : test_lengths) {
         Real rmse = calculate_rmse(original_data, reconstructed_data);
 
         std::cout << "  Сравнение оригинала и результата после FFT->IFFT:" << std::endl;
-       // logfile << "  Сравнение оригинала и результата после FFT->IFFT:" << std::endl;
+        #ifdef LOG_ON
+        logfile << "  Сравнение оригинала и результата после FFT->IFFT:" << std::endl;
+       #endif
 
         std::cout << std::scientific;
-        //logfile << std::scientific;
+        #ifdef LOG_ON
+        logfile << std::scientific;
+        #endif
 
         std::cout << "    Максимальная абсолютная ошибка: " << max_error << std::endl;
-       // logfile << "    Максимальная абсолютная ошибка: " << max_error << std::endl;
+        #ifdef LOG_ON
+        logfile << "    Максимальная абсолютная ошибка: " << max_error << std::endl;
+       #endif
 
         std::cout << "    Среднеквадратичная ошибка : " << rmse << std::endl;
-       // logfile << "    Среднеквадратичная ошибка : " << rmse << std::endl;
+        #ifdef LOG_ON
+        logfile << "    Среднеквадратичная ошибка : " << rmse << std::endl;
+       #endif
 
         std::cout << std::fixed;
-       // logfile << std::fixed;
+        #ifdef LOG_ON
+        logfile << std::fixed;
+       #endif
 
     } catch (const std::invalid_argument& e) {
         std::cerr << "  не та N" << std::endl;
